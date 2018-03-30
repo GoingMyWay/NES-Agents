@@ -13,9 +13,9 @@ class NES(object):
     def w_try(self, i_popu):
         return [self.weights[i] + self.sigma * noise for i, noise in enumerate(i_popu)]
 
-    def train(self, n_iters=300, p_step=20):
+    def train(self, n_iters=300, p_steps=20):
         for iter in range(n_iters):
-            if iter % p_step == 0:
+            if iter % p_steps == 0:
                 print(' iter: %s, reward: %s' % (iter, self.reward_func(self.weights)))
 
             # randomly initialize weights of each population
