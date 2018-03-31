@@ -2,6 +2,7 @@
 import random
 
 import gym
+import joblib
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
@@ -27,7 +28,7 @@ class PongAgent(object):
     def play(self):
         pass
 
-    def train(self, n_iters=300, p_steps=20):
+    def train(self, n_iters=1000, p_steps=20):
         with self.sess.as_default(), self.sess.graph.as_default():
             self.es.train(n_iters=n_iters, p_steps=p_steps)
 
@@ -45,7 +46,14 @@ class PongAgent(object):
             conv_2 = slim.conv2d(activation_fn=tf.nn.relu, inputs=conv_1, num_outputs=64,
                                  kernel_size=[4, 4], stride=2, padding='SAME')
             fc = slim.fully_connected(slim.flatten(conv_2), 256, activation_fn=tf.nn.elu)
+            # get all the weights
             self.weights = tf.trainable_variables()
+
+    def save_weights(self, file_name='weights.pkl'):
+        joblib.dump(self.sess.run(self.weights), file_name)
+
+    def load_weights(self, file_name='weights.pkl'):
+        self.sess.run([tf_v.assign(v) for tf_v, v in zip(self.weights, joblib.load(file_name))])
 
     @property
     def weights(self):
