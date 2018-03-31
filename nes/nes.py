@@ -1,4 +1,6 @@
 # THIS IS SINGLE CPU VERSION
+import time
+
 import numpy as np
 
 
@@ -15,17 +17,15 @@ class NES(object):
     def w_try(self, i_popu):
         return [self._real_weights[i] + self.sigma * noise for i, noise in enumerate(i_popu)]
 
-    def train(self, n_iters=300, p_steps=20):
+    def train(self, n_iters=500, p_steps=20):
+        last_time = time.time()
         for iter in range(n_iters):
-            if iter % p_steps == 0:
-                print(' iter: %s, reward: %s' % (iter, self._reward_func(self._real_weights)))
-
             # randomly initialize weights of each population
             populations = [[np.random.randn(*w.shape) for w in self._real_weights] for _ in range(self.population_size)]
 
             # jitter weights and get the rewards
             rewards = [
-                self._reward_func(self.w_try(i_popu)) for i, i_popu in enumerate(populations)
+                self._reward_func(self.w_try(i_popu))[0] for i, i_popu in enumerate(populations)
             ]
             A = (rewards - np.mean(rewards)) / np.std(rewards)
 
@@ -36,6 +36,10 @@ class NES(object):
 
             # assign value to tensorflow's graph
             self._sess.run([tf_var.assign(real_var) for tf_var, real_var in zip(self.weights, self._real_weights)])
+
+            reward, the_last_action = self._reward_func(self._real_weights)
+            print('[INFO] iter: {}, reward: {:.4f}, the last action: {}, time costs: {:.4f}'.format(
+                iter, reward, the_last_action, time.time()-last_time))
 
     @property
     def weights(self):

@@ -3,6 +3,8 @@ import random
 
 import gym
 import joblib
+import numpy as np
+import scipy.misc as sp
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
@@ -10,8 +12,18 @@ from nes import NES
 
 
 class PongAgent(object):
-    def __init__(self, img_shape=(84, 84), hist_len=4):
-        self.env = gym.make('PongDeterministic-v0')
+    def __init__(self,
+                 img_shape=(84, 84),
+                 hist_len=4,
+                 epsilon=0.0,
+                 alpha=0.01,
+                 sigma=0.01,
+                 population_size=15,
+                 env_name='PongDeterministic-v0',
+                 gym_mode='rgb_array'):
+        self.gym_mode = gym_mode
+        self.env = gym.make(env_name)
+        self.epsilon = epsilon
         self._weights = []
         self._img_shape = img_shape
         self._hist_len = hist_len
@@ -21,31 +33,59 @@ class PongAgent(object):
         self.es = NES(sess=self.sess,
                       weights=self.weights,
                       reward_func=self.reward_func,
-                      alpha=0.01,
-                      sigma=0.01,
-                      population_size=15)
+                      alpha=alpha,
+                      sigma=sigma,
+                      population_size=population_size)
 
-    def play(self):
+    def play(self, n_episode=10):
         pass
 
-    def train(self, n_iters=1000, p_steps=20):
+    def train(self, n_iters=1000, p_steps=1):
+        """
+        Train NES
+        """
         with self.sess.as_default(), self.sess.graph.as_default():
             self.es.train(n_iters=n_iters, p_steps=p_steps)
 
     def predict_action(self, input_state):
-        pass
+        outputs = self.sess.run([self.outputs], feed_dict={self.inputs: np.expand_dims(input_state, 0)})
+        return np.argmax(outputs[0])
 
-    def reward_func(self, weights):
-        return random.random()
+    def reward_func(self, weights, max_step=300):
+        # only run one episode
+        the_last_action = None
+        total_reward = 0
+        max_step, step = max_step, 0
+        ob = self.env.reset()
+        st_s = process_frame(ob, self.img_shape)
+        state = np.stack((st_s, st_s, st_s, st_s), axis=2)
+        done = False
+
+        while not done and step <= max_step:
+            self.env.render(self.gym_mode)
+            if random.random() < self.epsilon:
+                action = np.random.choice(range(self.env.action_space.n))
+            else:
+                action = self.predict_action(input_state=state)
+            ob, reward, done, info = self.env.step(action)
+            total_reward += reward + float(np.random.choice([-0.00001, 0.00001]))
+            step += 1
+            the_last_action = action
+
+            img = np.expand_dims(process_frame(ob, self.img_shape), axis=2)
+            state = np.append(img, state[:, :, :3], axis=2)
+
+        return total_reward, the_last_action
 
     def _create_network(self, scope='network'):
         with tf.variable_scope(scope):
-            inputs = tf.placeholder(shape=[None, *self.img_shape, self.hist_len], dtype=tf.float32)
-            conv_1 = slim.conv2d(activation_fn=tf.nn.relu, inputs=inputs, num_outputs=16,
-                                 kernel_size=[8, 8], stride=4, padding='SAME')
-            conv_2 = slim.conv2d(activation_fn=tf.nn.relu, inputs=conv_1, num_outputs=64,
-                                 kernel_size=[4, 4], stride=2, padding='SAME')
-            fc = slim.fully_connected(slim.flatten(conv_2), 256, activation_fn=tf.nn.elu)
+            self.inputs = tf.placeholder(shape=[None, *self.img_shape, self.hist_len], dtype=tf.float32)
+            self.conv_1 = slim.conv2d(activation_fn=tf.nn.relu, inputs=self.inputs, num_outputs=16,
+                                      kernel_size=[8, 8], stride=4, padding='SAME')
+            self.conv_2 = slim.conv2d(activation_fn=tf.nn.relu, inputs=self.conv_1, num_outputs=64,
+                                      kernel_size=[4, 4], stride=2, padding='SAME')
+            self.fc = slim.fully_connected(slim.flatten(self.conv_2), 256, activation_fn=tf.nn.elu)
+            self.outputs = slim.fully_connected(self.fc, self.env.action_space.n, activation_fn=tf.nn.softmax)
             # get all the weights
             self.weights = tf.trainable_variables()
 
@@ -80,5 +120,10 @@ class PongAgent(object):
         self._hist_len = hist_len
 
 
-def gym_process():
-    pass
+def process_frame(frame, img_shape):
+    img = sp.imresize(rgb2gray(frame[33:194, :, :]), img_shape)
+    return img
+
+
+def rgb2gray(rgb):
+    return np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
