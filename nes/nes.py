@@ -1,11 +1,12 @@
 # THIS IS SINGLE CPU VERSION
+import gc
 import time
 
 import numpy as np
 
 
 class NES(object):
-    def __init__(self, sess, weights, reward_func, alpha, sigma, population_size):
+    def __init__(self, sess, weights, reward_func, alpha, sigma, population_size, update_func):
         self._sess = sess
         self._weights = weights
         self._real_weights = self._sess.run(self._weights)
@@ -13,11 +14,12 @@ class NES(object):
         self._alpha = alpha
         self._sigma = sigma
         self._population_size = population_size
+        self._update_func = update_func
 
     def w_try(self, i_popu):
         return [self._real_weights[i] + self.sigma * noise for i, noise in enumerate(i_popu)]
 
-    def train(self, n_iters=500, p_steps=20):
+    def train(self, n_iters=500):
         last_time = time.time()
         for iter in range(n_iters):
             # randomly initialize weights of each population
@@ -35,19 +37,13 @@ class NES(object):
                 self._real_weights[i] += self.alpha/(self.population_size*self.sigma) * np.dot(N.T, A).T
 
             # assign value to tensorflow's graph
-            self._sess.run([tf_var.assign(real_var) for tf_var, real_var in zip(self.weights, self._real_weights)])
+            self._update_func(self._sess, self._real_weights)
 
             reward, the_last_action = self._reward_func(self._real_weights)
             print('[INFO] iter: {}, reward: {:.4f}, the last action: {}, time costs: {:.4f}'.format(
                 iter, reward, the_last_action, time.time()-last_time))
 
-    @property
-    def weights(self):
-        return self._weights
-
-    @weights.setter
-    def weights(self, weights):
-        self._weights = weights
+            gc.collect()  # garbage collector
 
     @property
     def alpha(self):
