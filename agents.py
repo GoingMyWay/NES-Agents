@@ -31,11 +31,12 @@ class PongAgent(object):
         self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
         self.es = NES(sess=self.sess,
-                      weights=self.weights,
+                      weights=self._weights,
                       reward_func=self.reward_func,
                       alpha=alpha,
                       sigma=sigma,
-                      population_size=population_size)
+                      population_size=population_size,
+                      update_func=self.update_values)
 
     def play(self, n_episode=10):
         pass
@@ -45,23 +46,25 @@ class PongAgent(object):
         Train NES
         """
         with self.sess.as_default(), self.sess.graph.as_default():
-            self.es.train(n_iters=n_iters, p_steps=p_steps)
+            self.es.train(n_iters=n_iters)
 
     def predict_action(self, input_state):
         outputs = self.sess.run([self.outputs], feed_dict={self.inputs: np.expand_dims(input_state, 0)})
         return np.argmax(outputs[0])
 
-    def reward_func(self, weights, max_step=300):
+    def reward_func(self, weights_try, max_steps=300):
+        # assign the weights
+        self.update_values(self.sess, weights_try)
         # only run one episode
         the_last_action = None
         total_reward = 0
-        max_step, step = max_step, 0
+        max_steps, step = max_steps, 0
         ob = self.env.reset()
         st_s = process_frame(ob, self.img_shape)
         state = np.stack((st_s, st_s, st_s, st_s), axis=2)
         done = False
 
-        while not done and step <= max_step:
+        while not done and step <= max_steps:
             self.env.render(self.gym_mode)
             if random.random() < self.epsilon:
                 action = np.random.choice(range(self.env.action_space.n))
@@ -87,21 +90,21 @@ class PongAgent(object):
             self.fc = slim.fully_connected(slim.flatten(self.conv_2), 256, activation_fn=tf.nn.elu)
             self.outputs = slim.fully_connected(self.fc, self.env.action_space.n, activation_fn=tf.nn.softmax)
             # get all the weights
-            self.weights = tf.trainable_variables()
+            self._weights = tf.trainable_variables()
+            # set the placeholders of weights
+            self.placeholders = [tf.placeholder(shape=w.get_shape().as_list(), dtype=tf.float32) for w in self._weights]
+            # get assign ops
+            self.assign_ops = [tf.assign(w, p) for w, p in zip(self._weights, self.placeholders)]
+
+    def update_values(self, sess, real_weights):
+        for idx, p in enumerate(self.placeholders):
+            sess.run(self.assign_ops[idx], feed_dict={p: real_weights[idx]})
 
     def save_weights(self, file_name='weights.pkl'):
-        joblib.dump(self.sess.run(self.weights), file_name)
+        joblib.dump(self.sess.run(self._weights), file_name)
 
     def load_weights(self, file_name='weights.pkl'):
-        self.sess.run([tf_v.assign(v) for tf_v, v in zip(self.weights, joblib.load(file_name))])
-
-    @property
-    def weights(self):
-        return self._weights
-
-    @weights.setter
-    def weights(self, weights):
-        self._weights = weights
+        self.sess.run([tf_v.assign(v) for tf_v, v in zip(self._weights, joblib.load(file_name))])
 
     @property
     def img_shape(self):
