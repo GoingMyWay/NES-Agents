@@ -17,14 +17,14 @@ Agents powered by Natural Evolution Strategies
 
 Run NES with only one cpu core
 
-#### Multi Core
+#### Multi Core (TO DO)
 
-Run NES with multi-core cpus within one machine(underdeveloped)
+Run NES with multi-core cpus within one machine
 
 
-#### Distributed 
+#### Distributed (TO DO)
 
-Run NES with multi-core cpus within many machines(underdeveloped)
+Run NES with multi-core cpus within many machines
 
 
 ### Scenarios
